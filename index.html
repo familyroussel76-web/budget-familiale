@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123E3B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Budget familial">
+  <title>Budget Familial V3.0.0</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="./config.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div id="boot" class="boot">
+    <div class="spinner"></div>
+    <strong>Budget Familial</strong>
+    <span>Chargement de la V3.0.0…</span>
+  </div>
+
+  <main id="login" class="login hidden">
+    <section class="login-card">
+      <div class="logo">€</div>
+      <span class="version">V3.0.0</span>
+      <h1>Budget familial partagé</h1>
+      <p>Connectez-vous avec le compte familial pour partager les mêmes enveloppes et dépenses sur tous les appareils.</p>
+
+      <label for="email">Adresse e-mail</label>
+      <input id="email" type="email" autocomplete="username" placeholder="adresse@email.fr">
+
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+
+      <button id="loginButton" class="button primary full">Se connecter</button>
+      <p id="loginError" class="error" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <div id="application" class="application hidden">
+    <header class="topbar">
+      <div>
+        <span class="top-kicker">Budget Familial</span>
+        <h1 id="pageTitle">Accueil</h1>
+      </div>
+      <button id="refreshButton" class="icon-button" aria-label="Actualiser">↻</button>
+    </header>
+
+    <main class="main-content">
+      <section id="homePage" class="page active">
+        <div class="month-row">
+          <select id="monthSelect" aria-label="Choisir le mois"></select>
+          <button id="editIncomeButton" class="button soft">Modifier le revenu</button>
+        </div>
+
+        <div class="summary-grid">
+          <article class="summary-card accent">
+            <span>Revenu</span>
+            <strong id="incomeTotal">0 €</strong>
+          </article>
+          <article class="summary-card">
+            <span>Dépensé</span>
+            <strong id="spentTotal">0 €</strong>
+          </article>
+          <article class="summary-card">
+            <span>Disponible</span>
+            <strong id="remainingTotal">0 €</strong>
+          </article>
+        </div>
+
+        <div class="section-header">
+          <div>
+            <h2>Enveloppes</h2>
+            <p>Touchez une enveloppe pour l’ouvrir.</p>
+          </div>
+        </div>
+        <div id="envelopeGrid" class="envelope-grid"></div>
+      </section>
+
+      <section id="envelopesPage" class="page">
+        <div class="section-header">
+          <div>
+            <h2>Toutes les enveloppes</h2>
+            <p id="envelopePageMonth"></p>
+          </div>
+        </div>
+        <div id="envelopeList" class="stack-list"></div>
+      </section>
+
+      <section id="expensePage" class="page">
+        <article id="expensePreview" class="preview-card">
+          <div>
+            <span>Enveloppe</span>
+            <h2 id="previewEnvelope">Alimentation</h2>
+          </div>
+          <div class="right">
+            <span>Reste après dépense</span>
+            <strong id="previewRemaining">0 €</strong>
+          </div>
+          <div class="progress full-row"><div id="previewBar" class="bar"></div></div>
+          <div class="preview-meta full-row">
+            <span id="previewUsed"></span>
+            <span id="previewBudget"></span>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Ajouter une dépense</h2>
+          <div class="grid-two">
+            <div>
+              <label for="expenseDate">Date</label>
+              <input id="expenseDate" type="date">
+            </div>
+            <div>
+              <label for="expenseAmount">Montant</label>
+              <input id="expenseAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00">
+            </div>
+          </div>
+
+          <label for="expenseEnvelope">Enveloppe</label>
+          <select id="expenseEnvelope"></select>
+
+          <label for="expensePerson">Personne / projet</label>
+          <select id="expensePerson"></select>
+
+          <label for="expenseLabel">Libellé</label>
+          <input id="expenseLabel" type="text" placeholder="Courses, essence, tournoi…">
+
+          <label for="expenseAuthor">Ajouté par</label>
+          <select id="expenseAuthor">
+            <option>Laura</option>
+            <option>Guillaume</option>
+            <option>Manon</option>
+            <option>Sacha</option>
+            <option>Gabin</option>
+          </select>
+
+          <div class="quick-grid">
+            <button data-add="10">+10 €</button>
+            <button data-add="20">+20 €</button>
+            <button data-add="50">+50 €</button>
+            <button data-add="100">+100 €</button>
+          </div>
+
+          <button id="saveExpenseButton" class="button primary full">Enregistrer la dépense</button>
+          <p id="expenseError" class="error" aria-live="polite"></p>
+        </article>
+      </section>
+
+      <section id="historyPage" class="page">
+        <div class="section-header">
+          <div>
+            <h2>Historique</h2>
+            <p id="historyCount">0 dépense</p>
+          </div>
+        </div>
+        <input id="historySearch" type="search" placeholder="Rechercher une dépense">
+        <div id="historyList" class="history-list"></div>
+      </section>
+
+      <section id="settingsPage" class="page">
+        <article class="panel">
+          <h2>Compte familial</h2>
+          <p id="connectedEmail" class="muted"></p>
+          <button id="logoutButton" class="button danger full">Se déconnecter</button>
+        </article>
+
+        <article class="panel">
+          <h2>Synchronisation</h2>
+          <p class="muted">Les données sont partagées avec Supabase et se mettent à jour entre les appareils.</p>
+          <button id="forceRefreshButton" class="button soft full">Actualiser maintenant</button>
+        </article>
+
+        <article class="panel">
+          <h2>Export</h2>
+          <p class="muted">Le fichier CSV peut être ouvert dans Excel ou Numbers.</p>
+          <button id="exportButton" class="button soft full">Exporter les dépenses</button>
+        </article>
+
+        <article class="panel version-panel">
+          <strong>Budget Familial V3.0.0</strong>
+          <span>GitHub Pages + Supabase</span>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-button active" data-page="homePage" data-title="Accueil"><span>⌂</span>Accueil</button>
+      <button class="nav-button" data-page="envelopesPage" data-title="Enveloppes"><span>▦</span>Enveloppes</button>
+      <button class="nav-button" data-page="expensePage" data-title="Ajouter"><span>＋</span>Ajouter</button>
+      <button class="nav-button" data-page="historyPage" data-title="Dépenses"><span>≡</span>Dépenses</button>
+      <button class="nav-button" data-page="settingsPage" data-title="Réglages"><span>⚙</span>Réglages</button>
+    </nav>
+  </div>
+
+  <div id="modalLayer" class="modal-layer hidden">
+    <section id="envelopeModal" class="modal hidden">
+      <div class="modal-icon" id="modalEnvelopeIcon">🍎</div>
+      <h2 id="modalEnvelopeName">Alimentation</h2>
+      <p id="modalEnvelopeMonth" class="muted"></p>
+      <div class="modal-stats">
+        <div><span>Budget</span><strong id="modalBudgetValue">0 €</strong></div>
+        <div><span>Dépensé</span><strong id="modalSpentValue">0 €</strong></div>
+        <div><span>Reste</span><strong id="modalRemainingValue">0 €</strong></div>
+      </div>
+      <label for="modalBudgetInput">Modifier le budget mensuel</label>
+      <input id="modalBudgetInput" type="number" inputmode="decimal" min="0" step="1">
+      <div class="modal-actions">
+        <button class="button soft" data-close-modal>Fermer</button>
+        <button id="saveBudgetButton" class="button primary">Enregistrer</button>
+      </div>
+    </section>
+
+    <section id="incomeModal" class="modal hidden">
+      <h2>Revenu du mois</h2>
+      <p id="incomeModalMonth" class="muted"></p>
+      <label for="incomeInput">Montant disponible</label>
+      <input id="incomeInput" type="number" inputmode="decimal" min="0" step="1">
+      <div class="modal-actions">
+        <button class="button soft" data-close-modal>Annuler</button>
+        <button id="saveIncomeButton" class="button primary">Enregistrer</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden" aria-live="polite"></div>
+</body>
+</html>
