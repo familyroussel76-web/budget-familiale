@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Budget familial">
-  <title>Budget Familial V3.0.2</title>
+  <title>Budget Familial V3.1.0</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -64,19 +64,28 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
 @media(max-width:430px){.summary-grid{grid-template-columns:1fr 1fr}.summary-card:last-child{grid-column:1/-1}.grid-two{grid-template-columns:1fr}}
 @media(max-width:350px){.envelope-grid{grid-template-columns:1fr}.quick-grid{grid-template-columns:1fr 1fr}}
 
+
+  .activity-list{display:grid;gap:10px;margin:14px 0;max-height:48vh;overflow:auto}
+  .activity-item{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line,#e5e7eb)}
+  .activity-item:last-child{border-bottom:0}
+  .activity-main{min-width:0}
+  .activity-main strong{display:block;margin-bottom:3px}
+  .activity-amount{font-weight:800;white-space:nowrap}
+  .activity-summary{padding:12px 14px;border-radius:14px;background:#f2f7f6;margin-top:8px;display:flex;justify-content:space-between;gap:12px}
+  .device-user-note{font-size:.92rem;color:var(--muted,#6b7280);margin-top:8px}
 </style>
 </head>
 <body>
   <div id="boot" class="boot">
     <div class="spinner"></div>
     <strong>Budget Familial</strong>
-    <span>Chargement de la V3.0.2…</span>
+    <span>Chargement de la V3.1.0…</span>
   </div>
 
   <main id="login" class="login hidden">
     <section class="login-card">
       <div class="logo">€</div>
-      <span class="version">V3.0.2</span>
+      <span class="version">V3.1.0</span>
       <h1>Budget familial partagé</h1>
       <p>Connectez-vous avec le compte familial pour partager les mêmes enveloppes et dépenses sur tous les appareils.</p>
 
@@ -220,6 +229,16 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         </article>
 
         <article class="panel">
+          <h2>Utilisateur de cet appareil</h2>
+          <p class="muted">Permet d’identifier les dépenses ajoutées par les autres membres de la famille.</p>
+          <label for="deviceUserSelect">Cet appareil est utilisé par</label>
+          <select id="deviceUserSelect">
+            <option>Laura</option><option>Guillaume</option><option>Manon</option><option>Sacha</option><option>Gabin</option>
+          </select>
+          <p class="device-user-note">Ce choix reste uniquement sur cet appareil.</p>
+        </article>
+
+        <article class="panel">
           <h2>Synchronisation</h2>
           <p class="muted">Les données sont partagées avec Supabase et se mettent à jour entre les appareils.</p>
           <button id="forceRefreshButton" class="button soft full">Actualiser maintenant</button>
@@ -232,7 +251,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         </article>
 
         <article class="panel version-panel">
-          <strong>Budget Familial V3.0.2</strong>
+          <strong>Budget Familial V3.1.0</strong>
           <span>GitHub Pages + Supabase</span>
         </article>
       </section>
@@ -277,12 +296,39 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
     </section>
   </div>
 
+  <div id="activityLayer" class="modal-layer hidden">
+    <section id="identityModal" class="modal hidden">
+      <div class="modal-icon">👤</div>
+      <h2>Qui utilise cet appareil ?</h2>
+      <p class="muted">Ce choix permettra de vous montrer, à l’ouverture, uniquement les nouvelles dépenses saisies par les autres personnes.</p>
+      <label for="identitySelect">Utilisateur</label>
+      <select id="identitySelect">
+        <option>Laura</option><option>Guillaume</option><option>Manon</option><option>Sacha</option><option>Gabin</option>
+      </select>
+      <div class="modal-actions">
+        <button id="saveIdentityButton" class="button primary full">Enregistrer sur cet appareil</button>
+      </div>
+    </section>
+
+    <section id="activityModal" class="modal hidden">
+      <div class="modal-icon">🔔</div>
+      <h2>Nouvelles dépenses</h2>
+      <p id="activityIntro" class="muted"></p>
+      <div id="activityList" class="activity-list"></div>
+      <div class="activity-summary"><span>Total ajouté</span><strong id="activityTotal">0 €</strong></div>
+      <div class="modal-actions">
+        <button id="activityCloseButton" class="button soft">Fermer</button>
+        <button id="activityHistoryButton" class="button primary">Voir les dépenses</button>
+      </div>
+    </section>
+  </div>
+
   <div id="toast" class="toast hidden" aria-live="polite"></div>
 <script>
 window.BUDGET_CONFIG = {
   supabaseUrl: "https://zlbhncvwvlpfptxmdupk.supabase.co",
   supabasePublishableKey: "sb_publishable_gGDca2Hr-UFEaUjnEQfaFQ_JTAp08Pu",
-  version: "3.0.0"
+  version: "3.1.0"
 };
 
 </script>
@@ -320,7 +366,7 @@ window.BUDGET_CONFIG = {
 
   let supabaseClient;
   let session = null;
-  let selectedMonth = localStorage.getItem("bf_v301_month") || "2026-09";
+  let selectedMonth = localStorage.getItem("bf_v310_month") || "2026-09";
   let expenses = [];
   let budgets = [];
   let incomes = [];
@@ -328,6 +374,29 @@ window.BUDGET_CONFIG = {
   let realtimeChannel = null;
   let toastTimer = null;
   let realtimeRefreshTimer = null;
+  let openingCheckpoint = null;
+  let pendingActivityCheckpoint = null;
+
+  const APP_USERS = ["Laura","Guillaume","Manon","Sacha","Gabin"];
+
+  function currentDeviceUser() {
+    return localStorage.getItem("bf_v310_device_user") || "";
+  }
+
+  function lastSeenKey(person) {
+    return `bf_v310_last_seen_${person}`;
+  }
+
+  function applyDeviceUser(person, firstSetup=false) {
+    if (!APP_USERS.includes(person)) return;
+    localStorage.setItem("bf_v310_device_user", person);
+    if ($("deviceUserSelect")) $("deviceUserSelect").value = person;
+    if ($("identitySelect")) $("identitySelect").value = person;
+    if ($("expenseAuthor")) $("expenseAuthor").value = person;
+    if (firstSetup && !localStorage.getItem(lastSeenKey(person))) {
+      localStorage.setItem(lastSeenKey(person), new Date().toISOString());
+    }
+  }
 
   function defaultBudget(envelope, month) {
     return month === "2026-09" || month === "2026-10" ? envelope.before : envelope.after;
@@ -390,6 +459,8 @@ window.BUDGET_CONFIG = {
     $("expenseEnvelope").innerHTML = ENVELOPES.map(item => `<option value="${escapeHtml(item.name)}">${item.icon} ${escapeHtml(item.name)}</option>`).join("");
     $("expensePerson").innerHTML = PEOPLE.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
     $("expenseDate").value = new Date().toISOString().slice(0,10);
+    const person = currentDeviceUser();
+    if (person) applyDeviceUser(person);
   }
 
   function showLogin() {
@@ -421,8 +492,10 @@ window.BUDGET_CONFIG = {
     $("login").classList.add("hidden");
     $("application").classList.remove("hidden");
     $("connectedEmail").textContent = session.user.email || "";
+    openingCheckpoint = new Date().toISOString();
     await ensureDefaults();
     await loadData();
+    handleOpeningActivity();
     startRealtime();
   }
 
@@ -619,7 +692,7 @@ window.BUDGET_CONFIG = {
     $("expenseAmount").value = "";
     $("expenseLabel").value = "";
     selectedMonth = date.slice(0,7);
-    localStorage.setItem("bf_v301_month",selectedMonth);
+    localStorage.setItem("bf_v310_month",selectedMonth);
     await loadData();
     switchPage("homePage","Accueil");
     toast("Dépense enregistrée et synchronisée.");
@@ -662,6 +735,63 @@ window.BUDGET_CONFIG = {
     closeModal();
     await loadData();
     toast("Revenu mis à jour.");
+  }
+
+  function handleOpeningActivity() {
+    const person = currentDeviceUser();
+    if (!person) {
+      $("activityLayer").classList.remove("hidden");
+      $("identityModal").classList.remove("hidden");
+      $("activityModal").classList.add("hidden");
+      return;
+    }
+    applyDeviceUser(person);
+    const key = lastSeenKey(person);
+    const lastSeen = localStorage.getItem(key);
+    if (!lastSeen) {
+      localStorage.setItem(key, openingCheckpoint || new Date().toISOString());
+      return;
+    }
+    const checkpoint = openingCheckpoint || new Date().toISOString();
+    const fresh = expenses
+      .filter(row => row.created_at && row.created_at > lastSeen && row.created_at <= checkpoint)
+      .filter(row => (row.ajoute_par || "") !== person)
+      .sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)));
+    if (!fresh.length) {
+      localStorage.setItem(key, checkpoint);
+      return;
+    }
+    pendingActivityCheckpoint = checkpoint;
+    $("activityIntro").textContent = `${fresh.length} dépense${fresh.length>1?"s ont":" a"} été enregistrée${fresh.length>1?"s":""} par d’autres personnes depuis votre dernière ouverture.`;
+    $("activityList").innerHTML = fresh.map(row => `<div class="activity-item">
+      <div class="activity-main">
+        <strong>${escapeHtml(row.libelle || row.enveloppe)}</strong>
+        <div class="row-meta">${escapeHtml(row.ajoute_par || "Autre")} · ${escapeHtml(row.enveloppe)} · ${formatDate(row.date_depense)}</div>
+      </div>
+      <div class="activity-amount">${euro(row.montant)}</div>
+    </div>`).join("");
+    $("activityTotal").textContent = euro(fresh.reduce((sum,row)=>sum+Number(row.montant||0),0));
+    $("activityLayer").classList.remove("hidden");
+    $("identityModal").classList.add("hidden");
+    $("activityModal").classList.remove("hidden");
+  }
+
+  function markOpeningActivityRead() {
+    const person = currentDeviceUser();
+    if (person && pendingActivityCheckpoint) {
+      localStorage.setItem(lastSeenKey(person), pendingActivityCheckpoint);
+    }
+    pendingActivityCheckpoint = null;
+    $("activityLayer").classList.add("hidden");
+    $("activityModal").classList.add("hidden");
+  }
+
+  function saveDeviceIdentity() {
+    const person = $("identitySelect").value;
+    applyDeviceUser(person, true);
+    $("activityLayer").classList.add("hidden");
+    $("identityModal").classList.add("hidden");
+    toast(`Cet appareil est identifié pour ${person}.`);
   }
 
   function startRealtime() {
@@ -717,7 +847,7 @@ window.BUDGET_CONFIG = {
     const blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href=url;a.download="Budget_Familial_V3.0.2.csv";
+    a.href=url;a.download="Budget_Familial_V3.1.0.csv";
     document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
   }
@@ -741,7 +871,7 @@ window.BUDGET_CONFIG = {
     $("forceRefreshButton").addEventListener("click",()=>loadData().then(()=>toast("Données actualisées.")).catch(handleError));
     $("monthSelect").addEventListener("change",event=>{
       selectedMonth=event.target.value;
-      localStorage.setItem("bf_v301_month",selectedMonth);
+      localStorage.setItem("bf_v310_month",selectedMonth);
       renderAll();
     });
     $("editIncomeButton").addEventListener("click",()=>{
@@ -759,7 +889,7 @@ window.BUDGET_CONFIG = {
       const month=event.target.value.slice(0,7);
       if(MONTHS.some(([key])=>key===month)){
         selectedMonth=month;
-        localStorage.setItem("bf_v301_month",selectedMonth);
+        localStorage.setItem("bf_v310_month",selectedMonth);
         renderAll();
       }
     });
@@ -771,6 +901,18 @@ window.BUDGET_CONFIG = {
     document.querySelectorAll("[data-close-modal]").forEach(button=>button.addEventListener("click",closeModal));
     $("modalLayer").addEventListener("click",event=>{if(event.target.id==="modalLayer")closeModal()});
     $("logoutButton").addEventListener("click",()=>supabaseClient.auth.signOut());
+    $("saveIdentityButton").addEventListener("click", saveDeviceIdentity);
+    $("activityCloseButton").addEventListener("click", markOpeningActivityRead);
+    $("activityHistoryButton").addEventListener("click", ()=>{
+      markOpeningActivityRead();
+      switchPage("historyPage","Dépenses");
+    });
+    $("deviceUserSelect").addEventListener("change", event=>{
+      const person = event.target.value;
+      const isNew = !localStorage.getItem(lastSeenKey(person));
+      applyDeviceUser(person, isNew);
+      toast(`Utilisateur de cet appareil : ${person}.`);
+    });
     $("exportButton").addEventListener("click",exportCsv);
   }
 
