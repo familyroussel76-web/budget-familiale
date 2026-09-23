@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Budget familial">
-  <title>Budget Familial V3.1.0</title>
+  <title>Budget Familial V3.2.0</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -79,13 +79,13 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
   <div id="boot" class="boot">
     <div class="spinner"></div>
     <strong>Budget Familial</strong>
-    <span>Chargement de la V3.1.0…</span>
+    <span>Chargement de la V3.2.0…</span>
   </div>
 
   <main id="login" class="login hidden">
     <section class="login-card">
       <div class="logo">€</div>
-      <span class="version">V3.1.0</span>
+      <span class="version">V3.2.0</span>
       <h1>Budget familial partagé</h1>
       <p>Connectez-vous avec le compte familial pour partager les mêmes enveloppes et dépenses sur tous les appareils.</p>
 
@@ -148,6 +148,25 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
           </div>
         </div>
         <div id="envelopeList" class="stack-list"></div>
+
+        <article class="panel" style="margin-top:16px">
+          <h2>Transférer un budget</h2>
+          <p class="muted">Déplace une partie du budget d’une enveloppe vers une autre, sans modifier le revenu ni les dépenses totales.</p>
+          <label for="transferFrom">Depuis</label>
+          <select id="transferFrom"></select>
+          <div id="transferFromInfo" class="device-user-note"></div>
+          <label for="transferTo">Vers</label>
+          <select id="transferTo"></select>
+          <label for="transferAmount">Montant à transférer</label>
+          <input id="transferAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00">
+          <button id="saveTransferButton" class="button primary full">Effectuer le transfert</button>
+          <p id="transferError" class="error" aria-live="polite"></p>
+        </article>
+
+        <article class="panel" style="margin-top:16px">
+          <h2>Historique des transferts</h2>
+          <div id="transferHistory" class="history-list"></div>
+        </article>
       </section>
 
       <section id="expensePage" class="page">
@@ -251,7 +270,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         </article>
 
         <article class="panel version-panel">
-          <strong>Budget Familial V3.1.0</strong>
+          <strong>Budget Familial V3.2.0</strong>
           <span>GitHub Pages + Supabase</span>
         </article>
       </section>
@@ -366,10 +385,11 @@ window.BUDGET_CONFIG = {
 
   let supabaseClient;
   let session = null;
-  let selectedMonth = localStorage.getItem("bf_v310_month") || "2026-09";
+  let selectedMonth = localStorage.getItem("bf_v320_month") || "2026-09";
   let expenses = [];
   let budgets = [];
   let incomes = [];
+  let transfers = [];
   let editingEnvelope = null;
   let realtimeChannel = null;
   let toastTimer = null;
@@ -458,6 +478,10 @@ window.BUDGET_CONFIG = {
     $("monthSelect").value = selectedMonth;
     $("expenseEnvelope").innerHTML = ENVELOPES.map(item => `<option value="${escapeHtml(item.name)}">${item.icon} ${escapeHtml(item.name)}</option>`).join("");
     $("expensePerson").innerHTML = PEOPLE.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
+    const transferOptions = ENVELOPES.map(item => `<option value="${escapeHtml(item.name)}">${item.icon} ${escapeHtml(item.name)}</option>`).join("");
+    $("transferFrom").innerHTML = transferOptions;
+    $("transferTo").innerHTML = transferOptions;
+    if (ENVELOPES.length > 1) $("transferTo").selectedIndex = 1;
     $("expenseDate").value = new Date().toISOString().slice(0,10);
     const person = currentDeviceUser();
     if (person) applyDeviceUser(person);
@@ -532,17 +556,20 @@ window.BUDGET_CONFIG = {
   }
 
   async function loadData() {
-    const [expenseRes,budgetRes,incomeRes] = await Promise.all([
+    const [expenseRes,budgetRes,incomeRes,transferRes] = await Promise.all([
       supabaseClient.from("depenses").select("*").order("date_depense",{ascending:false}).order("created_at",{ascending:false}),
       supabaseClient.from("budgets").select("*"),
-      supabaseClient.from("revenus").select("*")
+      supabaseClient.from("revenus").select("*"),
+      supabaseClient.from("transferts").select("*").order("created_at",{ascending:false})
     ]);
     if (expenseRes.error) throw expenseRes.error;
     if (budgetRes.error) throw budgetRes.error;
     if (incomeRes.error) throw incomeRes.error;
+    if (transferRes.error) console.warn("Table transferts indisponible :", transferRes.error.message);
     expenses = expenseRes.data || [];
     budgets = budgetRes.data || [];
     incomes = incomeRes.data || [];
+    transfers = transferRes.error ? [] : (transferRes.data || []);
     renderAll();
   }
 
@@ -558,6 +585,8 @@ window.BUDGET_CONFIG = {
     $("remainingTotal").classList.toggle("negative",income-spent<0);
     renderEnvelopeCards();
     renderEnvelopeList();
+    renderTransferPanel();
+    renderTransferHistory();
     renderPreview();
     renderHistory();
   }
@@ -692,7 +721,7 @@ window.BUDGET_CONFIG = {
     $("expenseAmount").value = "";
     $("expenseLabel").value = "";
     selectedMonth = date.slice(0,7);
-    localStorage.setItem("bf_v310_month",selectedMonth);
+    localStorage.setItem("bf_v320_month",selectedMonth);
     await loadData();
     switchPage("homePage","Accueil");
     toast("Dépense enregistrée et synchronisée.");
@@ -720,6 +749,54 @@ window.BUDGET_CONFIG = {
     closeModal();
     await loadData();
     toast("Budget mis à jour.");
+  }
+
+  function renderTransferPanel() {
+    if (!$('transferFrom')) return;
+    const from = $('transferFrom').value;
+    const remaining = budgetFor(from) - spentFor(from);
+    $('transferFromInfo').textContent = `Disponible dans cette enveloppe : ${euro(remaining)}`;
+  }
+
+  function renderTransferHistory() {
+    if (!$('transferHistory')) return;
+    const rows = transfers.filter(row => row.mois === selectedMonth);
+    if (!rows.length) {
+      $('transferHistory').innerHTML = '<div class="empty">Aucun transfert pour ce mois.</div>';
+      return;
+    }
+    $('transferHistory').innerHTML = rows.map(row => `<div class="history-row">
+      <div class="history-main"><strong>${escapeHtml(row.enveloppe_source)} → ${escapeHtml(row.enveloppe_destination)}</strong>
+      <div class="row-meta">${escapeHtml(row.ajoute_par || 'Famille')} · ${new Date(row.created_at).toLocaleDateString('fr-FR')}</div></div>
+      <div class="row-amount">${euro(row.montant)}</div>
+    </div>`).join('');
+  }
+
+  async function saveTransfer() {
+    const from = $('transferFrom').value;
+    const to = $('transferTo').value;
+    const amount = Number($('transferAmount').value);
+    $('transferError').textContent = '';
+    if (!from || !to || from === to) { $('transferError').textContent = 'Choisissez deux enveloppes différentes.'; return; }
+    if (!Number.isFinite(amount) || amount <= 0) { $('transferError').textContent = 'Indiquez un montant supérieur à 0 €.'; return; }
+    const available = budgetFor(from) - spentFor(from);
+    if (amount > available) { $('transferError').textContent = `Montant trop élevé : ${euro(available)} disponibles.`; return; }
+    const oldFrom = budgetFor(from), oldTo = budgetFor(to);
+    const now = new Date().toISOString();
+    const uid = session.user.id;
+    const first = await supabaseClient.from('budgets').upsert({user_id:uid,mois:selectedMonth,enveloppe:from,montant:oldFrom-amount,updated_at:now},{onConflict:'user_id,mois,enveloppe'});
+    if (first.error) { console.error(first.error); $('transferError').textContent='Transfert impossible.'; return; }
+    const second = await supabaseClient.from('budgets').upsert({user_id:uid,mois:selectedMonth,enveloppe:to,montant:oldTo+amount,updated_at:now},{onConflict:'user_id,mois,enveloppe'});
+    if (second.error) {
+      console.error(second.error);
+      await supabaseClient.from('budgets').upsert({user_id:uid,mois:selectedMonth,enveloppe:from,montant:oldFrom,updated_at:new Date().toISOString()},{onConflict:'user_id,mois,enveloppe'});
+      $('transferError').textContent='Transfert annulé : la seconde enveloppe n’a pas pu être mise à jour.'; return;
+    }
+    const log = await supabaseClient.from('transferts').insert({user_id:uid,mois:selectedMonth,enveloppe_source:from,enveloppe_destination:to,montant:amount,ajoute_par:currentDeviceUser() || 'Famille'});
+    if (log.error) console.warn('Historique transfert non enregistré :', log.error.message);
+    $('transferAmount').value='';
+    await loadData();
+    toast(`${euro(amount)} transférés de ${from} vers ${to}.`);
   }
 
   async function saveIncome() {
@@ -800,6 +877,7 @@ window.BUDGET_CONFIG = {
       .on("postgres_changes",{event:"*",schema:"public",table:"depenses"},scheduleRealtimeRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"budgets"},scheduleRealtimeRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"revenus"},scheduleRealtimeRefresh)
+      .on("postgres_changes",{event:"*",schema:"public",table:"transferts"},scheduleRealtimeRefresh)
       .subscribe();
   }
 
@@ -847,7 +925,7 @@ window.BUDGET_CONFIG = {
     const blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href=url;a.download="Budget_Familial_V3.1.0.csv";
+    a.href=url;a.download="Budget_Familial_V3.2.0.csv";
     document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
   }
@@ -871,7 +949,7 @@ window.BUDGET_CONFIG = {
     $("forceRefreshButton").addEventListener("click",()=>loadData().then(()=>toast("Données actualisées.")).catch(handleError));
     $("monthSelect").addEventListener("change",event=>{
       selectedMonth=event.target.value;
-      localStorage.setItem("bf_v310_month",selectedMonth);
+      localStorage.setItem("bf_v320_month",selectedMonth);
       renderAll();
     });
     $("editIncomeButton").addEventListener("click",()=>{
@@ -882,6 +960,8 @@ window.BUDGET_CONFIG = {
     $("saveIncomeButton").addEventListener("click",saveIncome);
     $("saveBudgetButton").addEventListener("click",saveBudget);
     $("saveExpenseButton").addEventListener("click",saveExpense);
+    $("saveTransferButton").addEventListener("click",saveTransfer);
+    $("transferFrom").addEventListener("change",renderTransferPanel);
     $("expenseEnvelope").addEventListener("change",renderPreview);
     $("expenseAmount").addEventListener("input",renderPreview);
     $("historySearch").addEventListener("input",renderHistory);
@@ -889,7 +969,7 @@ window.BUDGET_CONFIG = {
       const month=event.target.value.slice(0,7);
       if(MONTHS.some(([key])=>key===month)){
         selectedMonth=month;
-        localStorage.setItem("bf_v310_month",selectedMonth);
+        localStorage.setItem("bf_v320_month",selectedMonth);
         renderAll();
       }
     });
