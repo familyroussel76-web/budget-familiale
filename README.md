@@ -1,23 +1,11 @@
-# Budget Familial V3.2.0
+# Budget Familial V3.3.0
 
-Correctif de chargement : CSS, configuration et logique intégrés directement dans index.html.
-Les icônes sont attendues à la racine du dépôt.
+Nouveautés :
+- toucher une enveloppe affiche le détail de ses dépenses du mois ;
+- le solde positif non dépensé de chaque enveloppe est automatiquement reporté sur le mois suivant ;
+- le report s'ajoute au budget mensuel prévu ;
+- seul un solde positif est reporté ;
+- le disponible global inclut les reports ;
+- transferts V3.2.0 conservés.
 
-## Fichiers à remplacer
-- index.html
-- manifest.webmanifest
-- service-worker.js
-- icon-192.png
-- icon-512.png
-
-Les anciens app.js, config.js et style.css peuvent être supprimés.
-
-
-## V3.2.0
-- Ajout d’une identité locale par appareil.
-- Popup à l’ouverture avec les dépenses enregistrées par les autres personnes depuis la dernière ouverture.
-- Bouton pour accéder directement à l’historique.
-- Aucune modification de la base Supabase nécessaire.
-
-
-V3.2.0 : transfert de budget entre enveloppes + historique synchronisé. Exécuter SUPABASE_V3.2.0.sql une seule fois dans Supabase SQL Editor avant utilisation.
+Aucune modification Supabase supplémentaire n'est nécessaire par rapport à la V3.2.0.

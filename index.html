@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Budget familial">
-  <title>Budget Familial V3.2.0</title>
+  <title>Budget Familial V3.3.0</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -73,19 +73,20 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
   .activity-amount{font-weight:800;white-space:nowrap}
   .activity-summary{padding:12px 14px;border-radius:14px;background:#f2f7f6;margin-top:8px;display:flex;justify-content:space-between;gap:12px}
   .device-user-note{font-size:.92rem;color:var(--muted,#6b7280);margin-top:8px}
+  .envelope-detail{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}.envelope-detail h3{margin:0 0 8px;font-size:15px}.envelope-detail-list{max-height:34vh;overflow:auto}.envelope-detail-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.envelope-detail-row:last-child{border-bottom:0}.carry-note{margin:8px 0 0;padding:9px 11px;border-radius:12px;background:var(--primary-soft);font-size:12px;color:var(--primary-dark)}
 </style>
 </head>
 <body>
   <div id="boot" class="boot">
     <div class="spinner"></div>
     <strong>Budget Familial</strong>
-    <span>Chargement de la V3.2.0…</span>
+    <span>Chargement de la V3.3.0…</span>
   </div>
 
   <main id="login" class="login hidden">
     <section class="login-card">
       <div class="logo">€</div>
-      <span class="version">V3.2.0</span>
+      <span class="version">V3.3.0</span>
       <h1>Budget familial partagé</h1>
       <p>Connectez-vous avec le compte familial pour partager les mêmes enveloppes et dépenses sur tous les appareils.</p>
 
@@ -270,7 +271,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         </article>
 
         <article class="panel version-panel">
-          <strong>Budget Familial V3.2.0</strong>
+          <strong>Budget Familial V3.3.0</strong>
           <span>GitHub Pages + Supabase</span>
         </article>
       </section>
@@ -295,8 +296,13 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         <div><span>Dépensé</span><strong id="modalSpentValue">0 €</strong></div>
         <div><span>Reste</span><strong id="modalRemainingValue">0 €</strong></div>
       </div>
-      <label for="modalBudgetInput">Modifier le budget mensuel</label>
+      <div id="modalCarryNote" class="carry-note hidden"></div>
+      <label for="modalBudgetInput">Modifier le budget total de ce mois</label>
       <input id="modalBudgetInput" type="number" inputmode="decimal" min="0" step="1">
+      <div class="envelope-detail">
+        <h3>Détail des dépenses</h3>
+        <div id="modalExpenseList" class="envelope-detail-list"></div>
+      </div>
       <div class="modal-actions">
         <button class="button soft" data-close-modal>Fermer</button>
         <button id="saveBudgetButton" class="button primary">Enregistrer</button>
@@ -347,7 +353,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
 window.BUDGET_CONFIG = {
   supabaseUrl: "https://zlbhncvwvlpfptxmdupk.supabase.co",
   supabasePublishableKey: "sb_publishable_gGDca2Hr-UFEaUjnEQfaFQ_JTAp08Pu",
-  version: "3.1.0"
+  version: "3.3.0"
 };
 
 </script>
@@ -385,7 +391,7 @@ window.BUDGET_CONFIG = {
 
   let supabaseClient;
   let session = null;
-  let selectedMonth = localStorage.getItem("bf_v320_month") || "2026-09";
+  let selectedMonth = localStorage.getItem("bf_v330_month") || "2026-09";
   let expenses = [];
   let budgets = [];
   let incomes = [];
@@ -422,10 +428,29 @@ window.BUDGET_CONFIG = {
     return month === "2026-09" || month === "2026-10" ? envelope.before : envelope.after;
   }
 
-  function budgetFor(name, month = selectedMonth) {
+  function baseBudgetFor(name, month = selectedMonth) {
     const stored = budgets.find(row => row.mois === month && row.enveloppe === name);
     if (stored) return Number(stored.montant);
     return defaultBudget(ENVELOPES.find(item => item.name === name), month);
+  }
+
+  function previousMonth(month) {
+    const i = MONTHS.findIndex(([key]) => key === month);
+    return i > 0 ? MONTHS[i-1][0] : null;
+  }
+
+  function carryoverFor(name, month = selectedMonth) {
+    const prev = previousMonth(month);
+    if (!prev) return 0;
+    return Math.max(0, budgetFor(name, prev) - spentFor(name, prev));
+  }
+
+  function budgetFor(name, month = selectedMonth) {
+    return baseBudgetFor(name, month) + carryoverFor(name, month);
+  }
+
+  function totalCarryoverForMonth(month = selectedMonth) {
+    return ENVELOPES.reduce((sum, envelope) => sum + carryoverFor(envelope.name, month), 0);
   }
 
   function incomeFor(month = selectedMonth) {
@@ -581,8 +606,9 @@ window.BUDGET_CONFIG = {
     const income = incomeFor();
     $("incomeTotal").textContent = euro(income);
     $("spentTotal").textContent = euro(spent);
-    $("remainingTotal").textContent = euro(income-spent);
-    $("remainingTotal").classList.toggle("negative",income-spent<0);
+    const available = income + totalCarryoverForMonth() - spent;
+    $("remainingTotal").textContent = euro(available);
+    $("remainingTotal").classList.toggle("negative",available<0);
     renderEnvelopeCards();
     renderEnvelopeList();
     renderTransferPanel();
@@ -650,6 +676,14 @@ window.BUDGET_CONFIG = {
     $("modalRemainingValue").textContent = euro(budget-spent);
     $("modalRemainingValue").classList.toggle("negative",budget-spent<0);
     $("modalBudgetInput").value = budget;
+    const carry = carryoverFor(name);
+    $("modalCarryNote").classList.toggle("hidden", carry <= 0);
+    $("modalCarryNote").textContent = carry > 0 ? `Dont ${euro(carry)} reportés du mois précédent.` : "";
+    const rows = expensesForMonth().filter(row => row.enveloppe === name);
+    $("modalExpenseList").innerHTML = rows.length ? rows.map(row => `<div class="envelope-detail-row">
+      <div><strong>${escapeHtml(row.libelle || row.personne || "Dépense")}</strong><div class="row-meta">${formatDate(row.date_depense)} · ${escapeHtml(row.personne || "Famille")} · ajouté par ${escapeHtml(row.ajoute_par || "Famille")}</div></div>
+      <div class="row-amount">${euro(row.montant)}</div>
+    </div>`).join("") : '<div class="empty">Aucune dépense dans cette enveloppe ce mois-ci.</div>';
     openModal("envelopeModal");
   }
 
@@ -721,7 +755,7 @@ window.BUDGET_CONFIG = {
     $("expenseAmount").value = "";
     $("expenseLabel").value = "";
     selectedMonth = date.slice(0,7);
-    localStorage.setItem("bf_v320_month",selectedMonth);
+    localStorage.setItem("bf_v330_month",selectedMonth);
     await loadData();
     switchPage("homePage","Accueil");
     toast("Dépense enregistrée et synchronisée.");
@@ -740,7 +774,7 @@ window.BUDGET_CONFIG = {
     if (!editingEnvelope || !Number.isFinite(value) || value<0) return;
     const { error } = await supabaseClient.from("budgets").upsert({
       user_id:session.user.id,mois:selectedMonth,enveloppe:editingEnvelope,
-      montant:value,updated_at:new Date().toISOString()
+      montant:value-carryoverFor(editingEnvelope),updated_at:new Date().toISOString()
     },{onConflict:"user_id,mois,enveloppe"});
     if (error) {
       console.error(error);
@@ -781,7 +815,7 @@ window.BUDGET_CONFIG = {
     if (!Number.isFinite(amount) || amount <= 0) { $('transferError').textContent = 'Indiquez un montant supérieur à 0 €.'; return; }
     const available = budgetFor(from) - spentFor(from);
     if (amount > available) { $('transferError').textContent = `Montant trop élevé : ${euro(available)} disponibles.`; return; }
-    const oldFrom = budgetFor(from), oldTo = budgetFor(to);
+    const oldFrom = baseBudgetFor(from), oldTo = baseBudgetFor(to);
     const now = new Date().toISOString();
     const uid = session.user.id;
     const first = await supabaseClient.from('budgets').upsert({user_id:uid,mois:selectedMonth,enveloppe:from,montant:oldFrom-amount,updated_at:now},{onConflict:'user_id,mois,enveloppe'});
@@ -925,7 +959,7 @@ window.BUDGET_CONFIG = {
     const blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href=url;a.download="Budget_Familial_V3.2.0.csv";
+    a.href=url;a.download="Budget_Familial_V3.3.0.csv";
     document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
   }
@@ -949,7 +983,7 @@ window.BUDGET_CONFIG = {
     $("forceRefreshButton").addEventListener("click",()=>loadData().then(()=>toast("Données actualisées.")).catch(handleError));
     $("monthSelect").addEventListener("change",event=>{
       selectedMonth=event.target.value;
-      localStorage.setItem("bf_v320_month",selectedMonth);
+      localStorage.setItem("bf_v330_month",selectedMonth);
       renderAll();
     });
     $("editIncomeButton").addEventListener("click",()=>{
@@ -969,7 +1003,7 @@ window.BUDGET_CONFIG = {
       const month=event.target.value.slice(0,7);
       if(MONTHS.some(([key])=>key===month)){
         selectedMonth=month;
-        localStorage.setItem("bf_v320_month",selectedMonth);
+        localStorage.setItem("bf_v330_month",selectedMonth);
         renderAll();
       }
     });
