@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Budget familial">
-  <title>Budget Familial V3.4.0</title>
+  <title>Budget Familial V3.4.1</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -74,19 +74,25 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
   .activity-summary{padding:12px 14px;border-radius:14px;background:#f2f7f6;margin-top:8px;display:flex;justify-content:space-between;gap:12px}
   .device-user-note{font-size:.92rem;color:var(--muted,#6b7280);margin-top:8px}
   .envelope-detail{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}.envelope-detail h3{margin:0 0 8px;font-size:15px}.envelope-detail-list{max-height:34vh;overflow:auto}.envelope-detail-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.envelope-detail-row:last-child{border-bottom:0}.carry-note{margin:8px 0 0;padding:9px 11px;border-radius:12px;background:var(--primary-soft);font-size:12px;color:var(--primary-dark)}
+  .priority-entry{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .priority-check{display:flex!important;align-items:center;gap:12px;flex:1;min-width:0;margin:0!important;cursor:pointer}
+  .priority-check input[type="checkbox"]{flex:0 0 22px;width:22px;height:22px;margin:0!important;accent-color:var(--primary)}
+  .priority-name{flex:1;min-width:0;line-height:1.35}
+  .priority-entry .button{flex:0 0 auto}
+  .reset-panel{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
 </style>
 </head>
 <body>
   <div id="boot" class="boot">
     <div class="spinner"></div>
     <strong>Budget Familial</strong>
-    <span>Chargement de la V3.4.0…</span>
+    <span>Chargement de la V3.4.1…</span>
   </div>
 
   <main id="login" class="login hidden">
     <section class="login-card">
       <div class="logo">€</div>
-      <span class="version">V3.4.0</span>
+      <span class="version">V3.4.1</span>
       <h1>Budget familial partagé</h1>
       <p>Connectez-vous avec le compte familial pour partager les mêmes enveloppes et dépenses sur tous les appareils.</p>
 
@@ -291,7 +297,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
         </article>
 
         <article class="panel version-panel">
-          <strong>Budget Familial V3.4.0</strong>
+          <strong>Budget Familial V3.4.1</strong>
           <span>GitHub Pages + Supabase</span>
         </article>
       </section>
@@ -337,6 +343,12 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
       <label><input id="autoDistribute" type="checkbox" checked> Répartir le nouveau revenu au prorata des enveloppes non prioritaires</label>
       <div id="incomePreview" class="envelope-detail-list" style="max-height:230px;overflow:auto;margin-top:12px"></div>
       <p id="incomeError" class="error"></p>
+      <div class="reset-panel">
+        <h3>Réinitialiser les reports</h3>
+        <p class="muted">Annule le report positif ou négatif provenant des mois précédents à partir du mois sélectionné. Le revenu mensuel, les budgets de base, les dépenses et l'historique des mois précédents sont conservés.</p>
+        <button id="resetReportsButton" type="button" class="button soft full">Réinitialiser les reports de ce mois</button>
+        <p id="resetReportsError" class="error"></p>
+      </div>
       <div class="modal-actions">
         <button class="button soft" data-close-modal>Annuler</button>
         <button id="saveIncomeButton" class="button primary">Enregistrer</button>
@@ -376,7 +388,7 @@ input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(2
 window.BUDGET_CONFIG = {
   supabaseUrl: "https://zlbhncvwvlpfptxmdupk.supabase.co",
   supabasePublishableKey: "sb_publishable_gGDca2Hr-UFEaUjnEQfaFQ_JTAp08Pu",
-  version: "3.4.0"
+  version: "3.4.1"
 };
 
 </script>
@@ -410,6 +422,7 @@ window.BUDGET_CONFIG = {
 
   let ENVELOPES = DEFAULT_ENVELOPES.map(x=>({...x}));
   let catalog = [];
+  let reportResets = [];
   const round = n => Math.round((Number(n)||0)*100)/100;
   function syncCatalog() {
     if (!catalog.length) return;
@@ -473,7 +486,7 @@ window.BUDGET_CONFIG = {
 
   function carryoverFor(name, month = selectedMonth) {
     const prev = previousMonth(month);
-    if (!prev) return 0;
+    if (!prev || reportResets.some(row=>row.mois===month)) return 0;
     return budgetFor(name, prev) - spentFor(name, prev);
   }
 
@@ -617,19 +630,21 @@ window.BUDGET_CONFIG = {
   }
 
   async function loadData() {
-    const [expenseRes,budgetRes,incomeRes,transferRes,catalogRes] = await Promise.all([
+    const [expenseRes,budgetRes,incomeRes,transferRes,catalogRes,resetRes] = await Promise.all([
       supabaseClient.from("depenses").select("*").order("date_depense",{ascending:false}).order("created_at",{ascending:false}),
       supabaseClient.from("budgets").select("*"),
       supabaseClient.from("revenus").select("*"),
       supabaseClient.from("transferts").select("*").order("created_at",{ascending:false}),
-      supabaseClient.from("enveloppes_config").select("*").order("created_at",{ascending:true})
+      supabaseClient.from("enveloppes_config").select("*").order("created_at",{ascending:true}),
+      supabaseClient.from("reports_reset").select("mois")
     ]);
     if (expenseRes.error) throw expenseRes.error;
     if (budgetRes.error) throw budgetRes.error;
     if (incomeRes.error) throw incomeRes.error;
     if (transferRes.error) console.warn("Table transferts indisponible :", transferRes.error.message);
-    if (catalogRes.error) throw new Error("Configuration des enveloppes absente : exécuter le SQL V3.4.0 dans Supabase.");
+    if (catalogRes.error) throw new Error("Configuration des enveloppes absente : exécuter le SQL V3.4.1 dans Supabase.");
     catalog = catalogRes.data || [];
+    reportResets = resetRes.data || [];
     if (!catalog.length) {
       const rows = DEFAULT_ENVELOPES.map(e=>({user_id:session.user.id,name:e.name,icon:e.icon,default_amount:e.after,priority:false,archived:false}));
       const inserted = await supabaseClient.from("enveloppes_config").insert(rows);
@@ -694,8 +709,8 @@ window.BUDGET_CONFIG = {
   }
 
   function renderPriorityList() {
-    $("priorityList").innerHTML=ENVELOPES.map(e=>`<div class="stack-row" style="align-items:center;gap:8px">
-      <label style="flex:1;margin:0"><input type="checkbox" data-priority="${escapeHtml(e.name)}" ${priority(e.name)?"checked":""}> ${escapeHtml(e.icon)} ${escapeHtml(e.name)}</label>
+    $("priorityList").innerHTML=ENVELOPES.map(e=>`<div class="priority-entry">
+      <label class="priority-check"><input type="checkbox" data-priority="${escapeHtml(e.name)}" ${priority(e.name)?"checked":""}><span class="priority-name">${escapeHtml(e.icon)} ${escapeHtml(e.name)}</span></label>
       <button class="button soft" data-remove-envelope="${escapeHtml(e.name)}" style="width:auto;padding:8px">Supprimer</button>
     </div>`).join("");
     document.querySelectorAll("[data-priority]").forEach(el=>el.addEventListener("change",()=>updatePriority(el.dataset.priority,el.checked)));
@@ -952,6 +967,16 @@ window.BUDGET_CONFIG = {
     toast(`${euro(amount)} transférés de ${from} vers ${to}.`);
   }
 
+  async function resetReports() {
+    const month=selectedMonth;
+    const carry=totalCarryoverForMonth(month);
+    if(reportResets.some(r=>r.mois===month)) {toast("Reports déjà réinitialisés pour ce mois.");return;}
+    if(!confirm(`Réinitialiser le report de ${monthLabel()} (${euro(carry)}) ?\\n\\nLes dépenses, budgets de base, revenu et mois précédents seront conservés. Cette opération sera partagée sur tous les appareils.`))return;
+    const {error}=await supabaseClient.from("reports_reset").insert({user_id:session.user.id,mois:month});
+    if(error) {$("resetReportsError").textContent=error.message;return;}
+    closeModal();await loadData();toast("Report remis à zéro pour "+monthLabel()+".");
+  }
+
   async function saveIncome() {
     const value=Number($("incomeInput").value), distribute=$("autoDistribute").checked;
     if(!Number.isFinite(value)||value<0)return;
@@ -1050,6 +1075,7 @@ window.BUDGET_CONFIG = {
       .on("postgres_changes",{event:"*",schema:"public",table:"revenus"},scheduleRealtimeRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"transferts"},scheduleRealtimeRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"enveloppes_config"},scheduleRealtimeRefresh)
+      .on("postgres_changes",{event:"*",schema:"public",table:"reports_reset"},scheduleRealtimeRefresh)
       .subscribe();
   }
 
@@ -1097,7 +1123,7 @@ window.BUDGET_CONFIG = {
     const blob = new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href=url;a.download="Budget_Familial_V3.4.0.csv";
+    a.href=url;a.download="Budget_Familial_V3.4.1.csv";
     document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
   }
@@ -1131,6 +1157,7 @@ window.BUDGET_CONFIG = {
       previewIncome();
     });
     $("saveIncomeButton").addEventListener("click",saveIncome);
+    $("resetReportsButton").addEventListener("click",resetReports);
     $("incomeInput").addEventListener("input",previewIncome);
     $("autoDistribute").addEventListener("change",previewIncome);
     $("addEnvelopeButton").addEventListener("click",addEnvelope);

@@ -1,11 +1,11 @@
-# Budget Familial V3.4.0
+# Budget Familial V3.4.1
+Correctifs : alignement des cases Prioritaire ; bouton Réinitialiser les reports depuis Accueil → Revenu et répartition.
 
-1. AVANT de publier la version, exécuter SUPABASE_V3.4.0.sql dans Supabase → SQL Editor → New query → Run.
-2. Déployer index.html, manifest.webmanifest et les deux icônes à la racine du dépôt GitHub Pages.
-3. Recharger la page (cache navigateur).
+## Installation
+1. Dans Supabase → SQL Editor, exécuter `SUPABASE_V3.4.1.sql` (la V3.4.0 doit déjà être installée).
+2. Dans GitHub Pages, remplacer `index.html` à la racine par celui de cette archive.
+3. Actualiser l'application, vérifier V3.4.1.
 
-Nouveautés : priorités synchronisées entre appareils, répartition au prorata des enveloppes non prioritaires avec aperçu, ajout d'enveloppes, archivage sécurisé sans effacer l'historique, modification manuelle des budgets y compris avec report négatif.
+La réinitialisation crée un marqueur partagé par compte Supabase et par mois : elle coupe le report entrant au mois sélectionné, sans effacer les mois passés, dépenses, revenus, transferts ou budgets. Le report reprend normalement les mois suivants à partir du solde du mois réinitialisé. Cette action n'est pas annulable depuis l'interface.
 
-IMPORTANT : l'ajout d'une enveloppe crée des budgets sur les mois disponibles (septembre 2026 à août 2027). La suppression archive l'enveloppe ; elle est refusée en présence de dépenses ou transferts historiques. La répartition modifie uniquement les budgets de base du mois sélectionné, pas les reports ni les dépenses. Si les enveloppes prioritaires dépassent le revenu, la répartition est refusée.
-
-L'actualisation des enveloppes n'est pas une transaction atomique : éviter les modifications simultanées sur plusieurs appareils. Les données Supabase existantes ne sont pas effacées.
+Attention : les utilisateurs connectés avec des comptes Supabase distincts ne partagent pas automatiquement les données si la base est toujours organisée par `user_id`.
